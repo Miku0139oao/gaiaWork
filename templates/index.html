@@ -1,0 +1,202 @@
+{{ define "content" }}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-lg">
+                <div class="card-body">
+                    <h2 class="card-title text-center mb-4 neon-text">檔案上傳系統</h2>
+
+                    <!-- 結果提示容器 -->
+                    <div id="resultAlert" class="alert alert-dismissible fade show mt-3 d-none" role="alert">
+                        <span class="alert-message"></span>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+
+                    <form id="uploadForm" method="post" enctype="multipart/form-data">
+                        <!-- 上傳區域 -->
+                        <div class="upload-box mb-4" onclick="document.getElementById('fileInput').click()">
+                            <div class="mb-3">
+                                <i class="bi bi-cloud-arrow-up fs-1 text-primary"></i>
+                            </div>
+                            <p class="text-muted mb-1">拖放檔案或點擊上傳</p>
+                            <small class="text-muted">最大檔案大小：32MB</small>
+                            <input type="file" name="file" id="fileInput" class="d-none" required>
+                        </div>
+
+                        <!-- 預覽區域 -->
+                        <div id="previewArea" class="text-center d-none">
+                            <img id="preview" src="#" class="img-fluid rounded-3 mb-2" alt="檔案預覽">
+                            <div class="file-meta">
+                                <p id="fileName" class="mb-1 text-truncate"></p>
+                                <p id="fileSize" class="text-muted small"></p>
+                            </div>
+                        </div>
+
+                        <!-- 提交按鈕 -->
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary btn-lg py-3">
+                                <span class="spinner-border spinner-border-sm d-none"></span>
+                                <span class="submit-text">開始處理檔案</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{{ end }}
+
+{{ define "scripts" }}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // DOM 元素引用
+        const domElements = {
+            fileInput: document.getElementById('fileInput'),
+            previewImg: document.getElementById('preview'),
+            fileName: document.getElementById('fileName'),
+            fileSize: document.getElementById('fileSize'),
+            previewArea: document.getElementById('previewArea'),
+            uploadForm: document.getElementById('uploadForm'),
+            submitBtn: document.querySelector('#uploadForm button[type="submit"]'),
+            resultAlert: document.getElementById('resultAlert'),
+            alertMessage: document.querySelector('.alert-message')
+        };
+
+        // 初始化檢查
+        if (!domElements.submitBtn) {
+            console.error('錯誤：提交按鈕元素未找到');
+            showAlert('系統初始化錯誤：找不到提交按鈕', 'danger');
+            return;
+        }
+
+        // 文件選擇處理
+        domElements.fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                // 顯示文件信息
+                domElements.fileName.textContent = file.name;
+                domElements.fileSize.textContent = formatFileSize(file.size);
+
+                // 圖片預覽處理
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        domElements.previewImg.src = e.target.result;
+                        domElements.previewArea.classList.remove('d-none');
+                    }
+                    reader.readAsDataURL(file);
+                } else {
+                    domElements.previewArea.classList.add('d-none');
+                }
+            }
+        });
+
+        // 表單提交處理
+        domElements.uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // 驗證文件
+            if (!domElements.fileInput.files.length) {
+                showAlert('請先選擇要上傳的檔案', 'warning');
+                return;
+            }
+
+            toggleLoadingState(true);
+
+            try {
+                const formData = new FormData();
+                formData.append('file', domElements.fileInput.files[0]);
+
+                const response = await fetch("/upload", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const contentType = response.headers.get("content-type");
+
+                // 處理 JSON 錯誤響應
+                if (contentType.includes("application/json")) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error);
+                }
+
+                // 處理文件下載
+                const blob = await response.blob();
+                const contentDisposition = response.headers.get("content-disposition");
+                let filename = "download";
+
+                if (contentDisposition) {
+                    const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+                    const matches = filenameRegex.exec(contentDisposition);
+                    if (matches && matches[1]) {
+                        filename = matches[1].replace(/['"]/g, '');
+                    }
+                }
+
+                // 觸發文件下載
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = decodeURIComponent(filename);
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+
+                showAlert('文件處理並下載成功', 'success');
+
+            } catch (error) {
+                showAlert(`上傳失敗: ${error.message}`, 'danger');
+            } finally {
+                toggleLoadingState(false);
+            }
+        });
+
+        // 工具函數
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const units = ['Bytes', 'KB', 'MB', 'GB'];
+            const exponent = Math.floor(Math.log(bytes) / Math.log(1024));
+            return `${(bytes / Math.pow(1024, exponent)).toFixed(2)} ${units[exponent]}`;
+        }
+
+        function toggleLoadingState(isLoading) {
+            const spinner = domElements.submitBtn.querySelector('.spinner-border');
+            const submitText = domElements.submitBtn.querySelector('.submit-text');
+
+            spinner.classList.toggle('d-none', !isLoading);
+            submitText.textContent = isLoading ? '處理中...' : '開始處理檔案';
+            domElements.submitBtn.disabled = isLoading;
+            domElements.fileInput.disabled = isLoading;
+        }
+
+        function showAlert(message, type = 'success') {
+            domElements.resultAlert.classList.remove('d-none', 'alert-success', 'alert-danger', 'alert-warning');
+            domElements.resultAlert.classList.add(`alert-${type}`);
+            domElements.alertMessage.textContent = message;
+
+            setTimeout(() => {
+                domElements.resultAlert.classList.add('d-none');
+            }, type === 'danger' ? 8000 : 5000);
+        }
+
+        // 拖放功能實現
+        const uploadBox = document.querySelector('.upload-box');
+        uploadBox.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadBox.classList.add('drag-over');
+        });
+        uploadBox.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            uploadBox.classList.remove('drag-over');
+        });
+        uploadBox.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadBox.classList.remove('drag-over');
+            domElements.fileInput.files = e.dataTransfer.files;
+            domElements.fileInput.dispatchEvent(new Event('change'));
+        });
+    });
+</script>
+{{ end }}
