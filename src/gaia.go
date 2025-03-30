@@ -26,6 +26,7 @@ const (
 	ShiftTypeC         = "C"
 	ShiftTypeAEarlyEnd = "A-1400"
 	ShiftTypeBNight    = "1800-B"
+ ShiftTypeExp = "EXP"
 )
 
 var (
@@ -344,6 +345,8 @@ func classifySpecialShiftWithDetail(timeRange string) (statType string) {
 	case startMins == 630 && endMins == 1200:
 		return ShiftTypeC
 	// 其他时段保持原样
+ case startMins == 540 && endMins == 1110:
+  return ShiftTypeExp
 	default:
 		return timeRange
 	}
